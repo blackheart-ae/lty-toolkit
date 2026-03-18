@@ -1,24 +1,10 @@
-📁 BASIC COMMANDS
 ls - List directory contents
 pwd - Print working directory
-whoami - Show current user
-date - Show date and time
+whoami - Current user
+date - Show date/time
 cal - Show calendar
-clear - Clear screen
-
-📊 SYSTEM INFO
-uptime - Show system uptime
-uname -a - Show system info
-df -h - Show disk usage
-free -h - Show memory usage
-
-📦 PACKAGE MANAGEMENT
-pkg install [package] - Install package
-pkg remove [package] - Remove package
-pkg list-all - List all packages
-pkg search [term] - Search package
-
-🌐 NETWORK
-ping [host] - Test connection
-ifconfig - Show network info
-wget [url] - Download file
+uptime - System uptime
+uname -a - System info
+df -h - Disk usage
+free -h - Memory usage
+ps aux - Process list
