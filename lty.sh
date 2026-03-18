@@ -23,13 +23,6 @@ LOG_FILE="$DATA_DIR/activity.log"
 # Create directories
 mkdir -p "$CORE_DIR" "$PLUGIN_DIR" "$DATA_DIR"
 
-# Source core modules
-for module in auth logger utils menu gui; do
-    if [ -f "$CORE_DIR/$module.sh" ]; then
-        source "$CORE_DIR/$module.sh"
-    fi
-done
-
 # Logger function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -37,7 +30,7 @@ log() {
 
 # Check dependencies
 check_deps() {
-    deps=("figlet" "lolcat" "whiptail")
+    deps=("figlet" "lolcat" "whiptail" "curl" "wget")
     for dep in "${deps[@]}"; do
         if ! command -v $dep &> /dev/null; then
             echo -e "${YELLOW}Installing $dep...${NC}"
@@ -90,6 +83,13 @@ login_system() {
         exit 1
     fi
 }
+
+# Source core modules
+for module in auth logger utils menu gui; do
+    if [ -f "$CORE_DIR/$module.sh" ]; then
+        source "$CORE_DIR/$module.sh"
+    fi
+done
 
 # Main menu
 main_menu() {
@@ -145,8 +145,8 @@ system_menu() {
         echo -e "${YELLOW}║${NC} 5. Back to Main           ${YELLOW}║${NC}"
         echo -e "${YELLOW}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " sys_choice
-        case $sys_choice in
+        read -p "Select option: " choice
+        case $choice in
             1) pkg update ;;
             2) pkg upgrade ;;
             3) termux-setup-storage ;;
@@ -172,8 +172,8 @@ package_menu() {
         echo -e "${GREEN}║${NC} 5. Back to Main           ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " pkg_choice
-        case $pkg_choice in
+        read -p "Select option: " choice
+        case $choice in
             1) 
                 read -p "Package name: " pkg
                 pkg install "$pkg"
@@ -209,8 +209,8 @@ dev_menu() {
         echo -e "${CYAN}║${NC} 6. Back to Main           ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " dev_choice
-        case $dev_choice in
+        read -p "Select option: " choice
+        case $choice in
             1) pkg install python ;;
             2) pkg install nodejs ;;
             3) pkg install git ;;
@@ -235,11 +235,12 @@ file_menu() {
         echo -e "${BLUE}║${NC} 3. Delete File            ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC} 4. Create Folder          ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC} 5. Delete Folder          ${BLUE}║${NC}"
-        echo -e "${BLUE}║${NC} 6. Back to Main           ${BLUE}║${NC}"
+        echo -e "${BLUE}║${NC} 6. View File              ${BLUE}║${NC}"
+        echo -e "${BLUE}║${NC} 7. Back to Main           ${BLUE}║${NC}"
         echo -e "${BLUE}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " file_choice
-        case $file_choice in
+        read -p "Select option: " choice
+        case $choice in
             1) ls -la ;;
             2) 
                 read -p "File name: " f
@@ -257,9 +258,17 @@ file_menu() {
                 ;;
             5) 
                 read -p "Folder name: " d
-                rmdir "$d" 2>/dev/null || echo "Folder not empty or doesn't exist"
+                rm -ri "$d"
                 ;;
-            6) break ;;
+            6)
+                read -p "File name: " f
+                if [ -f "$f" ]; then
+                    less "$f"
+                else
+                    echo "File not found"
+                fi
+                ;;
+            7) break ;;
             *) echo -e "${RED}Invalid!${NC}"; sleep 1 ;;
         esac
         read -p "Press Enter..."
@@ -280,10 +289,17 @@ network_menu() {
         echo -e "${GREEN}║${NC} 5. Back to Main          ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " net_choice
-        case $net_choice in
-            1) ping -c 4 google.com ;;
-            2) curl -s ifconfig.me ;;
+        read -p "Select option: " choice
+        case $choice in
+            1) 
+                read -p "Host to ping: " host
+                ping -c 4 "$host"
+                ;;
+            2) 
+                echo "Your IP:"
+                curl -s ifconfig.me
+                echo
+                ;;
             3) 
                 read -p "URL: " url
                 wget "$url"
@@ -306,16 +322,16 @@ plugin_menu() {
     echo -e "${CYAN}║     PLUGINS                ║${NC}"
     echo -e "${CYAN}╠════════════════════════════╣${NC}"
     
-    if [ -z "$(ls -A $PLUGIN_DIR)" ]; then
+    if [ -z "$(ls -A $PLUGIN_DIR 2>/dev/null)" ]; then
         echo -e "${YELLOW}No plugins found${NC}"
         echo -e "${YELLOW}Creating example plugin...${NC}"
         
+        mkdir -p "$PLUGIN_DIR"
         cat > "$PLUGIN_DIR/example.sh" << 'EOF'
 #!/bin/bash
 echo "🎯 Example Plugin"
 echo "This is a sample plugin"
-pkg install cowsay -y
-cowsay "Blackheart Rocks!"
+echo "Plugin executed at: $(date)"
 EOF
         chmod +x "$PLUGIN_DIR/example.sh"
     fi
@@ -346,13 +362,11 @@ gui_mode() {
     
     while true; do
         CHOICE=$(whiptail --title "Blackheart Toolkit v$VERSION" \
-            --menu "Choose an option:" 20 60 12 \
+            --menu "Choose an option:" 20 60 10 \
             "1" "System Update" \
             "2" "Install Python" \
-            "3" "Install Node.js" \
-            "4" "Network Tools" \
-            "5" "File Manager" \
-            "6" "Exit" 3>&1 1>&2 2>&3)
+            "3" "Network Tools" \
+            "4" "Exit" 3>&1 1>&2 2>&3)
         
         case $CHOICE in
             1) 
@@ -363,11 +377,7 @@ gui_mode() {
                 pkg install python
                 whiptail --msgbox "Python installed!" 8 40
                 ;;
-            3) 
-                pkg install nodejs
-                whiptail --msgbox "Node.js installed!" 8 40
-                ;;
-            4)
+            3)
                 NET=$(whiptail --title "Network Tools" \
                     --menu "Select:" 15 50 3 \
                     "1" "Ping Google" \
@@ -379,11 +389,7 @@ gui_mode() {
                 esac
                 read -p "Press Enter..."
                 ;;
-            5)
-                whiptail --msgbox "File manager in CLI mode" 8 40
-                file_menu
-                ;;
-            6) 
+            4) 
                 return
                 ;;
         esac
