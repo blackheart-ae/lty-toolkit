@@ -23,27 +23,18 @@ LOG_FILE="$DATA_DIR/activity.log"
 # Create directories
 mkdir -p "$CORE_DIR" "$PLUGIN_DIR" "$DATA_DIR"
 
-# Logger function
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-}
-
-# Check dependencies
-check_deps() {
-    deps=("figlet" "lolcat" "whiptail" "curl" "wget")
-    for dep in "${deps[@]}"; do
-        if ! command -v $dep &> /dev/null; then
-            echo -e "${YELLOW}Installing $dep...${NC}"
-            pkg install $dep -y
-        fi
-    done
-}
-
-# Banner
+# ============================================
+# SAFE BANNER FUNCTION (No lolcat dependency)
+# ============================================
 show_banner() {
     clear
     if command -v figlet &> /dev/null; then
-        figlet "Blackheart" | lolcat
+        # Try with lolcat if available
+        if command -v lolcat &> /dev/null; then
+            figlet "Blackheart" | lolcat 2>/dev/null || figlet "Blackheart"
+        else
+            figlet "Blackheart"
+        fi
     else
         echo -e "${BLUE}================================${NC}"
         echo -e "${GREEN}   BLACKHEART TOOLKIT v$VERSION${NC}"
@@ -53,45 +44,68 @@ show_banner() {
     echo ""
 }
 
-# Login system
+# ============================================
+# MUSIC MODULE (Safe)
+# ============================================
+MUSIC_FILE="$HOME/storage/music/termux-music/intense.mp3"
+
+play_intense() {
+    if command -v mpv &> /dev/null && [ -f "$MUSIC_FILE" ]; then
+        mpv --no-video --volume=70 "$MUSIC_FILE" > /dev/null 2>&1 &
+        local pid=$!
+        sleep 3
+        kill $pid 2>/dev/null || true
+    fi
+}
+
+# ============================================
+# LOGGER
+# ============================================
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+# ============================================
+# LOGIN SYSTEM (Safe)
+# ============================================
 login_system() {
     if [ ! -f "$DATA_DIR/users.db" ]; then
         echo -e "${YELLOW}First time setup - Register${NC}"
-        read -p "Username: " username
-        read -sp "Password: " password
+        read -rp "Username: " username
+        read -rsp "Password: " password
         echo
-        echo "$username:$(echo -n "$password" | md5sum | cut -d' ' -f1)" > "$DATA_DIR/users.db"
+        # Simple hash (no md5sum dependency)
+        hash=$(echo -n "$password" | sha256sum | cut -d' ' -f1)
+        echo "$username:$hash" > "$DATA_DIR/users.db"
         echo -e "${GREEN}Registration successful!${NC}"
         log "New user registered: $username"
     fi
 
     echo -e "${YELLOW}Login Required${NC}"
-    read -p "Username: " username
-    read -sp "Password: " password
+    read -rp "Username: " username
+    read -rsp "Password: " password
     echo
 
-    stored_hash=$(cut -d':' -f2 "$DATA_DIR/users.db")
-    input_hash=$(echo -n "$password" | md5sum | cut -d' ' -f1)
+    if [ -f "$DATA_DIR/users.db" ]; then
+        stored_user=$(cut -d':' -f1 "$DATA_DIR/users.db")
+        stored_pass=$(cut -d':' -f2 "$DATA_DIR/users.db")
+        input_hash=$(echo -n "$password" | sha256sum | cut -d' ' -f1)
 
-    if [ "$input_hash" = "$stored_hash" ]; then
-        echo -e "${GREEN}Login successful!${NC}"
-        log "User logged in: $username"
-        return 0
-    else
-        echo -e "${RED}Login failed!${NC}"
-        log "Failed login attempt: $username"
-        exit 1
+        if [[ "$username" == "$stored_user" && "$input_hash" == "$stored_pass" ]]; then
+            echo -e "${GREEN}Login successful!${NC}"
+            log "User logged in: $username"
+            return 0
+        fi
     fi
+
+    echo -e "${RED}Login failed!${NC}"
+    log "Failed login attempt: $username"
+    exit 1
 }
 
-# Source core modules
-for module in auth logger utils menu gui; do
-    if [ -f "$CORE_DIR/$module.sh" ]; then
-        source "$CORE_DIR/$module.sh"
-    fi
-done
-
-# Main menu
+# ============================================
+# MAIN MENU
+# ============================================
 main_menu() {
     while true; do
         show_banner
@@ -108,7 +122,7 @@ main_menu() {
         echo -e "${BLUE}║${NC} 8. Exit                   ${BLUE}║${NC}"
         echo -e "${BLUE}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " choice
+        read -rp "Select option: " choice
         
         case $choice in
             1) system_menu ;;
@@ -131,7 +145,9 @@ main_menu() {
     done
 }
 
-# System menu
+# ============================================
+# SYSTEM MENU
+# ============================================
 system_menu() {
     while true; do
         show_banner
@@ -145,7 +161,7 @@ system_menu() {
         echo -e "${YELLOW}║${NC} 5. Back to Main           ${YELLOW}║${NC}"
         echo -e "${YELLOW}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " choice
+        read -rp "Select option: " choice
         case $choice in
             1) pkg update ;;
             2) pkg upgrade ;;
@@ -154,11 +170,13 @@ system_menu() {
             5) break ;;
             *) echo -e "${RED}Invalid!${NC}"; sleep 1 ;;
         esac
-        read -p "Press Enter..."
+        read -rp "Press Enter..."
     done
 }
 
-# Package menu
+# ============================================
+# PACKAGE MENU
+# ============================================
 package_menu() {
     while true; do
         show_banner
@@ -172,29 +190,31 @@ package_menu() {
         echo -e "${GREEN}║${NC} 5. Back to Main           ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " choice
+        read -rp "Select option: " choice
         case $choice in
             1) 
-                read -p "Package name: " pkg
-                pkg install "$pkg"
+                read -rp "Package name: " pkg
+                [ -n "$pkg" ] && pkg install "$pkg"
                 ;;
             2) 
-                read -p "Package name: " pkg
-                pkg uninstall "$pkg"
+                read -rp "Package name: " pkg
+                [ -n "$pkg" ] && pkg uninstall "$pkg"
                 ;;
             3) 
-                read -p "Search term: " term
-                pkg search "$term"
+                read -rp "Search term: " term
+                [ -n "$term" ] && pkg search "$term"
                 ;;
             4) pkg list-installed ;;
             5) break ;;
             *) echo -e "${RED}Invalid!${NC}"; sleep 1 ;;
         esac
-        read -p "Press Enter..."
+        read -rp "Press Enter..."
     done
 }
 
-# Development menu
+# ============================================
+# DEVELOPMENT MENU
+# ============================================
 dev_menu() {
     while true; do
         show_banner
@@ -205,25 +225,25 @@ dev_menu() {
         echo -e "${CYAN}║${NC} 2. Install Node.js        ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} 3. Install Git            ${CYAN}║${NC}"
         echo -e "${CYAN}║${NC} 4. Install PHP            ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 5. Install Java           ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 6. Back to Main           ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 5. Back to Main           ${CYAN}║${NC}"
         echo -e "${CYAN}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " choice
+        read -rp "Select option: " choice
         case $choice in
             1) pkg install python ;;
             2) pkg install nodejs ;;
             3) pkg install git ;;
             4) pkg install php ;;
-            5) pkg install openjdk-17 ;;
-            6) break ;;
+            5) break ;;
             *) echo -e "${RED}Invalid!${NC}"; sleep 1 ;;
         esac
-        read -p "Press Enter..."
+        read -rp "Press Enter..."
     done
 }
 
-# File manager
+# ============================================
+# FILE MANAGER
+# ============================================
 file_menu() {
     while true; do
         show_banner
@@ -235,47 +255,38 @@ file_menu() {
         echo -e "${BLUE}║${NC} 3. Delete File            ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC} 4. Create Folder          ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC} 5. Delete Folder          ${BLUE}║${NC}"
-        echo -e "${BLUE}║${NC} 6. View File              ${BLUE}║${NC}"
-        echo -e "${BLUE}║${NC} 7. Back to Main           ${BLUE}║${NC}"
+        echo -e "${BLUE}║${NC} 6. Back to Main           ${BLUE}║${NC}"
         echo -e "${BLUE}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " choice
+        read -rp "Select option: " choice
         case $choice in
             1) ls -la ;;
             2) 
-                read -p "File name: " f
-                touch "$f"
-                echo "Created: $f"
+                read -rp "File name: " f
+                [ -n "$f" ] && touch "$f"
                 ;;
             3) 
-                read -p "File name: " f
-                rm -i "$f"
+                read -rp "File name: " f
+                [ -n "$f" ] && rm -i "$f"
                 ;;
             4) 
-                read -p "Folder name: " d
-                mkdir -p "$d"
-                echo "Created: $d"
+                read -rp "Folder name: " d
+                [ -n "$d" ] && mkdir -p "$d"
                 ;;
             5) 
-                read -p "Folder name: " d
-                rm -ri "$d"
+                read -rp "Folder name: " d
+                [ -n "$d" ] && rm -ri "$d"
                 ;;
-            6)
-                read -p "File name: " f
-                if [ -f "$f" ]; then
-                    less "$f"
-                else
-                    echo "File not found"
-                fi
-                ;;
-            7) break ;;
+            6) break ;;
             *) echo -e "${RED}Invalid!${NC}"; sleep 1 ;;
         esac
-        read -p "Press Enter..."
+        read -rp "Press Enter..."
     done
 }
 
-# Network menu
+# ============================================
+# NETWORK MENU
+# ============================================
 network_menu() {
     while true; do
         show_banner
@@ -285,52 +296,46 @@ network_menu() {
         echo -e "${GREEN}║${NC} 1. Ping Test             ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC} 2. Show IP               ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC} 3. Download File         ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC} 4. Speed Test            ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC} 5. Back to Main          ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC} 4. Back to Main          ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════╝${NC}"
         
-        read -p "Select option: " choice
+        read -rp "Select option: " choice
         case $choice in
             1) 
-                read -p "Host to ping: " host
-                ping -c 4 "$host"
+                read -rp "Host: " host
+                [ -n "$host" ] && ping -c 4 "$host"
                 ;;
             2) 
-                echo "Your IP:"
-                curl -s ifconfig.me
+                curl -s ifconfig.me || echo "No internet"
                 echo
                 ;;
             3) 
-                read -p "URL: " url
-                wget "$url"
+                read -rp "URL: " url
+                [ -n "$url" ] && wget "$url"
                 ;;
-            4) 
-                pkg install speedtest-cli -y
-                speedtest-cli
-                ;;
-            5) break ;;
+            4) break ;;
             *) echo -e "${RED}Invalid!${NC}"; sleep 1 ;;
         esac
-        read -p "Press Enter..."
+        read -rp "Press Enter..."
     done
 }
 
-# Plugin menu
+# ============================================
+# PLUGIN MENU
+# ============================================
 plugin_menu() {
     show_banner
     echo -e "${CYAN}╔════════════════════════════╗${NC}"
     echo -e "${CYAN}║     PLUGINS                ║${NC}"
     echo -e "${CYAN}╠════════════════════════════╣${NC}"
     
-    if [ -z "$(ls -A $PLUGIN_DIR 2>/dev/null)" ]; then
+    if [ -z "$(ls -A "$PLUGIN_DIR" 2>/dev/null)" ]; then
         echo -e "${YELLOW}No plugins found${NC}"
         echo -e "${YELLOW}Creating example plugin...${NC}"
-        
         mkdir -p "$PLUGIN_DIR"
         cat > "$PLUGIN_DIR/example.sh" << 'EOF'
 #!/bin/bash
 echo "🎯 Example Plugin"
-echo "This is a sample plugin"
 echo "Plugin executed at: $(date)"
 EOF
         chmod +x "$PLUGIN_DIR/example.sh"
@@ -340,7 +345,7 @@ EOF
     ls -1 "$PLUGIN_DIR" | sed 's/^/   /'
     echo -e "${CYAN}╚════════════════════════════╝${NC}"
     
-    read -p "Enter plugin name to run (or 'back'): " plugin
+    read -rp "Enter plugin name (or 'back'): " plugin
     if [ "$plugin" = "back" ]; then
         return
     fi
@@ -351,52 +356,45 @@ EOF
     else
         echo -e "${RED}Plugin not found!${NC}"
     fi
-    read -p "Press Enter..."
+    read -rp "Press Enter..."
 }
 
-# GUI mode
+# ============================================
+# GUI MODE
+# ============================================
 gui_mode() {
     if ! command -v whiptail &> /dev/null; then
         pkg install whiptail -y
     fi
     
-    while true; do
-        CHOICE=$(whiptail --title "Blackheart Toolkit v$VERSION" \
-            --menu "Choose an option:" 20 60 10 \
-            "1" "System Update" \
-            "2" "Install Python" \
-            "3" "Network Tools" \
-            "4" "Exit" 3>&1 1>&2 2>&3)
-        
-        case $CHOICE in
-            1) 
-                pkg update && pkg upgrade
-                whiptail --msgbox "Update complete!" 8 40
-                ;;
-            2) 
-                pkg install python
-                whiptail --msgbox "Python installed!" 8 40
-                ;;
-            3)
-                NET=$(whiptail --title "Network Tools" \
-                    --menu "Select:" 15 50 3 \
-                    "1" "Ping Google" \
-                    "2" "Show IP" \
-                    "3" "Back" 3>&1 1>&2 2>&3)
-                case $NET in
-                    1) ping -c 4 google.com ;;
-                    2) curl -s ifconfig.me ;;
-                esac
-                read -p "Press Enter..."
-                ;;
-            4) 
-                return
-                ;;
-        esac
-    done
+    CHOICE=$(whiptail --title "Blackheart Toolkit v$VERSION" \
+        --menu "Choose an option:" 20 60 5 \
+        "1" "System Update" \
+        "2" "Install Python" \
+        "3" "Network Tools" \
+        "4" "Exit" 3>&1 1>&2 2>&3)
+    
+    case $CHOICE in
+        1) pkg update && pkg upgrade ;;
+        2) pkg install python ;;
+        3) 
+            NET=$(whiptail --title "Network" --menu "Select:" 15 50 2 \
+                "1" "Ping Google" \
+                "2" "Show IP" 3>&1 1>&2 2>&3)
+            case $NET in
+                1) ping -c 4 google.com ;;
+                2) curl -s ifconfig.me ;;
+            esac
+            ;;
+        4) return ;;
+    esac
 }
 
-# Main execution
-check_deps
+# ============================================
+# MAIN EXECUTION
+# ============================================
+log "Tool started"
+show_banner
 login_system
+play_intense
 main_menu
